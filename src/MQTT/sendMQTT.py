@@ -9,6 +9,7 @@ BROKER = "broker.emqx.io"
 PORT = 1883  # Use 8883 for SSL/TLS if needed
 
 TOPIC = "/measurements/heartrate"
+
 # Generate dynamic values
 current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 random_heart_rate = random.randint(45, 95)
@@ -20,23 +21,25 @@ message = {
     "heartRate": random_heart_rate
 }
 
-
 # Convert dictionary to JSON string
 payload = json.dumps(message)
 
-# Callback when the client successfully connects
-def on_connect(client, userdata, flags, rc):
-    if rc == 0:
+# Callback when the client successfully connects (MQTT v5 style)
+def on_connect(client, userdata, flags, reasonCode, properties):
+    if reasonCode == 0:
         print("Connected to MQTT Broker!")
     else:
-        print(f"Failed to connect, return code {rc}")
+        print(f"Failed to connect, reason code {reasonCode}")
 
-# Callback when a message is successfully published
-def on_publish(client, userdata, mid):
-    print(f"Message {mid} published successfully!")
+# Callback when a message is successfully published (MQTT v5 style)
+def on_publish(client, userdata, mid, reasonCode, properties):
+    print(f"Message {mid} published successfully with reason code: {reasonCode}")
 
-# Create MQTT client
-client = mqtt.Client()
+# Create MQTT client using MQTT v5 callback API
+client = mqtt.Client(
+    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+    protocol=mqtt.MQTTv311
+)
 
 # Assign callbacks
 client.on_connect = on_connect
@@ -55,12 +58,12 @@ time.sleep(2)
 result = client.publish(TOPIC, payload)
 
 # Check if publish was successful
-status = result.rc
-if status == 0:
+if result.rc == 0:
     print(f"Published: {payload} to {TOPIC}")
 else:
     print("Failed to send message")
 
 # Stop the loop and disconnect
+time.sleep(1)  # Give some time for publish callback to complete
 client.loop_stop()
 client.disconnect()

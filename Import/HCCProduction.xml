@@ -809,6 +809,6 @@ Handle a 'Response'</Description>
 
 <Document name="MQTT Device to Patient.LUT">
 <lookupTable>
-<entry table="MQTT Device to Patient" key="123456789">John|Doe|M|195930727|987654321</entry>
+<entry table="MQTT Device to Patient" key="123456789">John|Doe|M|19720423|987654321</entry>
 </lookupTable>
 </Document></Export>

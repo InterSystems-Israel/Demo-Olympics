@@ -1,0 +1,496 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="IRIS" version="26" zv="IRIS for UNIX (Red Hat Enterprise Linux 9 for ARM64) 2025.1 (Build 223U)" ts="2025-04-27 15:48:47">
+<Class name="Demolympics.Adapter.CloudStorageOutboundAdapter">
+<ClassType/>
+<ProcedureBlock>1</ProcedureBlock>
+<Super>EnsLib.CloudStorage.OutboundAdapter,EnsLib.CloudStorage.Common</Super>
+<System>4</System>
+<TimeChanged>67301,52688.742895119</TimeChanged>
+<TimeCreated>67301,52688.742895119</TimeCreated>
+<Inheritance>right</Inheritance>
+
+<Property name="PresignedUrl">
+<Description><![CDATA[
+Presigned URL <br>
+All other settings will be ignored if a Presigned URL is provided.]]></Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="10000"/>
+</Property>
+</Class>
+
+
+<Class name="Demolympics.BO.CloudBucket">
+<Super>Ens.BusinessOperation</Super>
+<TimeChanged>67322,43342.85836</TimeChanged>
+<TimeCreated>67301,52689.176789944</TimeCreated>
+
+<Parameter name="ADAPTER">
+<Default>Demolympics.Adapter.CloudStorageOutboundAdapter</Default>
+</Parameter>
+
+<Property name="Adapter">
+<Type>Demolympics.Adapter.CloudStorageOutboundAdapter</Type>
+</Property>
+
+<Parameter name="INVOCATION">
+<Default>Queue</Default>
+</Parameter>
+
+<Property name="BucketName">
+<Description>
+Bucket name</Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Property name="DirectoryName">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="1000"/>
+</Property>
+
+<Parameter name="SETTINGS">
+<Default>BucketName:Cloud Storage,DirectoryName:Cloud Storage</Default>
+</Parameter>
+
+<Method name="LoadToCloud">
+<FormalSpec>pRequest:EnsLib.HL7.Message,*pResponse:Ens.StringResponse</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	#dim tException As %Exception.SystemException
+	Set tStatus = $$$OK
+
+	set pResponse=##class(Ens.StringResponse).%New()
+
+	Try {
+		set tStream=##class(%Stream.TmpCharacter).%New()
+ 		set tStatus=pRequest.OutputToLibraryStream(.tStream)
+		set tFileName=..DirectoryName_"/"_$tr($zdt($h,3,1)," :","_")_".HL7"
+		
+		//Set tStatus = ..Adapter.DeleteBlob(..BucketName, tFileName)
+		Set tStatus = ..Adapter.UploadBlobFromStream(..BucketName,tFileName,tStream)	 	
+
+	 	if $$$ISERR(tStatus) {
+	 		set pResponse.StringValue= $system.Status.GetErrorText(tStatus)
+	    }
+	  
+	} 
+	Catch tException {
+		Set tStatus = tException.AsStatus()
+	 	set pResponse.StringValue=$system.Status.GetErrorText(tStatus)
+	}
+	Quit tStatus
+]]></Implementation>
+</Method>
+
+<XData name="MessageMap">
+<Data><![CDATA[
+<MapItems>
+<MapItem MessageType="EnsLib.HL7.Message">
+<Method>LoadToCloud</Method>
+</MapItem>
+</MapItems>
+]]></Data>
+</XData>
+</Class>
+
+
+<Class name="Demolympics.BP.DeviceCustomBP">
+<Super>Ens.BusinessProcess</Super>
+<TimeChanged>67322,55504.495547637</TimeChanged>
+<TimeCreated>67301,52688.706347681</TimeCreated>
+
+<Property name="IncludeFTS">
+<Type>%Boolean</Type>
+<InitialExpression>0</InitialExpression>
+</Property>
+
+<Parameter name="SETTINGS">
+<Default>IncludeFTS:FTS</Default>
+</Parameter>
+
+<Method name="OnRequest">
+<FormalSpec>pRequest:Demolympics.MSG.DeviceStatusRequest,*pResponse:Ens.StringResponse</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+  set patientString = ##class(Ens.Util.FunctionSet).Lookup("MQTT Device to Patient", pRequest.deviceId)
+  set firstname = $PIECE(patientString, "|", 1)
+  set lastname = $PIECE(patientString, "|", 2)
+  set gender = $PIECE(patientString, "|", 3)
+  set DoB = $PIECE(patientString, "|", 4)
+  set SSN = $PIECE(patientString, "|", 5)
+
+  set myObservation = ##class(Demolympics.MSG.ObservationRequest).%New()
+
+  set myObservation.FirstName = firstname
+  set myObservation.LastName = lastname
+  
+  set myObservation.DateOfBirth = DoB
+  
+  
+  set myObservation.Gender = gender
+  set myObservation.DeviceId = pRequest.deviceId
+  set myObservation.SSN = SSN
+
+
+  set intTime1 = $ZDATETIMEH(pRequest.measurementTime,5)
+  set intTime2 = $ZDT(intTime1,8)
+  set intTime3 =  $REPLACE(intTime2, " ", "")
+  set myObservation.measurementTime =  $REPLACE(intTime3, ":", "")
+
+
+  set myObservation.heartRate = pRequest.heartRate
+  set st = myObservation.%Save()
+
+
+  set myHL7 = ##class(EnsLib.HL7.Message).%New()
+  
+  set st = ##class(Demolympics.DTL.ObservationtoADTA08).Transform(myObservation,.myHL7)
+  
+  
+  Set tStatus = ..SendRequestAsync("To EMR", myHL7, 0)
+
+  If ..IncludeFTS {
+    Set tStatus = ..SendRequestAsync("FTS to FHIR Server", myHL7, 0)
+  }
+  Return $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="OnResponse">
+<Description>
+Handle a 'Response'</Description>
+<FormalSpec><![CDATA[request:Ens.StringRequest,&response:Ens.StringResponse,callrequest:%Library.Persistent,callresponse:%Library.Persistent,pCompletionKey:%String]]></FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[    Return $$$OK
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DefaultData>DeviceCustomBPDefaultData</DefaultData>
+<Data name="DeviceCustomBPDefaultData">
+<Subscript>"DeviceCustomBP"</Subscript>
+<Value name="1">
+<Value>IncludeFTS</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Demolympics.BS.DeviceStatusService">
+<Super>Ens.BusinessService,%JSON.Adaptor</Super>
+<TimeChanged>67322,55808.460130747</TimeChanged>
+<TimeCreated>67301,52688.686866274</TimeCreated>
+
+<Parameter name="ADAPTER">
+<Default>EnsLib.MQTT.Adapter.Inbound</Default>
+</Parameter>
+
+<Method name="OnProcessInput">
+<FormalSpec>pInput:EnsLib.MQTT.Message,pOutput:Ens.StringResponse</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+   set tsc=$$$OK 
+   set DeviceStatusValue = ##class(%DynamicAbstractObject).%FromJSON(pInput.StringValue)
+   set DeviceStatus = ##class(Demolympics.MSG.DeviceStatusRequest).%New()
+   do DeviceStatus.%JSONImport(DeviceStatusValue)
+   set tsc =..SendRequestSync("Medical Device Process", DeviceStatus, .Response, -1, "Device Status Process")
+   set pOutput = Response
+   quit tsc
+]]></Implementation>
+</Method>
+</Class>
+
+
+<Class name="Demolympics.DTL.ObservationtoADTA08">
+<Super>Ens.DataTransformDTL</Super>
+<TimeChanged>67301,52689.194532226</TimeChanged>
+<TimeCreated>67301,52689.194532226</TimeCreated>
+<DependsOn>Demolympics.MSG.ObservationRequest,EnsLib.HL7.Message</DependsOn>
+
+<Parameter name="GENERATEEMPTYSEGMENTS">
+<Default>0</Default>
+</Parameter>
+
+<Parameter name="IGNOREMISSINGSOURCE">
+<Default>1</Default>
+</Parameter>
+
+<Parameter name="REPORTERRORS">
+<Default>1</Default>
+</Parameter>
+
+<Parameter name="TREATEMPTYREPEATINGFIELDASNULL">
+<Default>0</Default>
+</Parameter>
+
+<XData name="DTL">
+<XMLNamespace>http://www.intersystems.com/dtl</XMLNamespace>
+<Data><![CDATA[
+<transform sourceClass='Demolympics.MSG.ObservationRequest' targetClass='EnsLib.HL7.Message' targetDocType='2.3.1:ADT_A01' create='new' language='objectscript' >
+<group>
+<annotation>MSH</annotation>
+<assign value='"Heart Rate Monitor"' property='target.{MSH:SendingApplication}' action='set' />
+<assign value='"A"' property='target.{MSH:SendingFacility}' action='set' />
+<assign value='"CAR"' property='target.{MSH:ReceivingApplication}' action='set' />
+<assign value='..SubString(..CurrentDateTime(),0,19)' property='target.{MSH:DateTimeOfMessage}' action='set' />
+<assign value='..ReplaceStr(target.{MSH:DateTimeOfMessage},"-","")' property='target.{MSH:DateTimeOfMessage}' action='set' />
+<assign value='..ReplaceStr(target.{MSH:DateTimeOfMessage},":","")' property='target.{MSH:DateTimeOfMessage}' action='set' />
+<assign value='..ReplaceStr(target.{MSH:DateTimeOfMessage}," ","")' property='target.{MSH:DateTimeOfMessage}' action='set' />
+<assign value='target.{MSH:DateTimeOfMessage}' property='target.{PV1:AdmitDateTime.timeofanevent}' action='set' />
+<assign value='target.{MSH:DateTimeOfMessage}' property='target.{PV1:DischargeDateTime.timeofanevent}' action='set' />
+<assign value='"ADT^A08"' property='target.{MSH:MessageType}' action='set' />
+<assign value='source.measurementTime' property='target.{MSH:MessageControlID}' action='set' />
+<assign value='"P"' property='target.{MSH:ProcessingID}' action='set' />
+<assign value='"2.3.1"' property='target.{MSH:VersionID}' action='set' />
+</group>
+<group>
+<annotation>EVN</annotation>
+<assign value='"A08"' property='target.{EVN:EventTypeCode}' action='set' />
+<assign value='target.{MSH:DateTimeOfMessage}' property='target.{EVN:RecordedDateTime.timeofanevent}' action='set' />
+</group>
+<group>
+<annotation>PID</annotation>
+<assign value='1' property='target.{PID:SetIDPID}' action='set' />
+<assign value='source.DeviceId' property='target.{PID:SSNNumberPatient}' action='set' />
+<assign value='"ABC"' property='target.{PID:PatientID.assigningfacility}' action='set' />
+<assign value='source.SSN' property='target.{PID:PatientIdentifierList(1).ID}' action='set' />
+<assign value='source.SSN' property='target.{PID:AlternatePatientIDPID(1).ID}' action='set' />
+<assign value='source.SSN' property='target.{PID:PatientID}' action='set' />
+<assign value='source.Gender' property='target.{PID:Sex}' action='set' />
+<assign value='source.LastName' property='target.{PID:PatientName(1).familylastname.familyname}' action='set' />
+<assign value='source.FirstName' property='target.{PID:PatientName(1).givenname}' action='set' />
+<assign value='source.DateOfBirth' property='target.{PID:DateTimeOfBirth.timeofanevent}' action='set' />
+</group>
+<group>
+<annotation>PV1</annotation>
+<assign value='1' property='target.{PV1:SetIDPV1}' action='set' />
+<assign value='"I"' property='target.{PV1:PatientClass}' action='set' />
+<assign value='"H2NW"' property='target.{PV1:AssignedPatientLocation}' action='set' />
+<assign value='"001234"' property='target.{PV1:AttendingDoctor(1).IDnumberST}' action='set' />
+<assign value='"HOUSE"' property='target.{PV1:AttendingDoctor(1).familylastname.familyname}' action='set' />
+<assign value='"GREGORY"' property='target.{PV1:AttendingDoctor(1).givenname}' action='set' />
+<assign value='"001234"' property='target.{PV1:ReferringDoctor(1).IDnumberST}' action='set' />
+<assign value='"HOUSE"' property='target.{PV1:ReferringDoctor(1).familylastname.familyname}' action='set' />
+<assign value='"GREGORY"' property='target.{PV1:ReferringDoctor(1).givenname}' action='set' />
+</group>
+<group>
+<annotation>OBX</annotation>
+<assign value='1' property='target.{OBX(1):SetIDOBX}' action='set' />
+<assign value='"55417-0"' property='target.{OBX():ObservationIdentifier.identifier}' action='set' />
+<assign value='"Blood pressure panel"' property='target.{OBX():ObservationIdentifier.text}' action='set' />
+<assign value='"LN"' property='target.{OBX():ObservationIdentifier.nameofcodingsystem}' action='set' />
+<assign value='"NM"' property='target.{OBX(1):ValueType}' action='set' />
+<assign value='"F"' property='target.{OBX(1):ObservationResultStatus}' action='set' />
+<assign value='source.measurementTime' property='target.{OBX(1):DateTimeoftheObservation.timeofanevent}' action='set' />
+<assign value='source.heartRate' property='target.{OBX(1):ObservationValue(1)}' action='set' />
+<assign value='"BPM"' property='target.{OBX(1):Units}' action='set' disabled='1' />
+<assign value='"BPM"' property='target.{OBX(1):Units.text}' action='set' />
+<assign value='264864' property='target.{OBX(1):Units.identifier}' action='set' disabled='1' />
+</group>
+</transform>
+]]></Data>
+</XData>
+</Class>
+
+
+<Class name="Demolympics.MSG.DeviceStatusRequest">
+<Super>Ens.Request,%JSON.Adaptor</Super>
+<TimeChanged>67301,52689.52061661</TimeChanged>
+<TimeCreated>67301,52689.52061661</TimeCreated>
+
+<Property name="deviceId">
+<Type>%String</Type>
+</Property>
+
+<Property name="measurementTime">
+<Type>%String</Type>
+</Property>
+
+<Property name="heartRate">
+<Type>%Integer</Type>
+</Property>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DefaultData>DeviceStatusRequestDefaultData</DefaultData>
+<Data name="DeviceStatusRequestDefaultData">
+<Subscript>"DeviceStatusRequest"</Subscript>
+<Value name="1">
+<Value>deviceId</Value>
+</Value>
+<Value name="2">
+<Value>measurementTime</Value>
+</Value>
+<Value name="3">
+<Value>heartRate</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Demolympics.MSG.ObservationRequest">
+<Super>Ens.Request</Super>
+<TimeChanged>67301,52688.68519154</TimeChanged>
+<TimeCreated>67301,52688.68519154</TimeCreated>
+
+<Property name="measurementTime">
+<Type>%String</Type>
+</Property>
+
+<Property name="heartRate">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="FirstName">
+<Type>%String</Type>
+</Property>
+
+<Property name="LastName">
+<Type>%String</Type>
+</Property>
+
+<Property name="DateOfBirth">
+<Type>%String</Type>
+</Property>
+
+<Property name="Gender">
+<Type>%String</Type>
+</Property>
+
+<Property name="DeviceId">
+<Type>%String</Type>
+</Property>
+
+<Property name="SSN">
+<Type>%String</Type>
+</Property>
+
+<Storage name="Default">
+<Type>%Storage.Persistent</Type>
+<DefaultData>ObservationRequestDefaultData</DefaultData>
+<Data name="ObservationRequestDefaultData">
+<Subscript>"ObservationRequest"</Subscript>
+<Value name="1">
+<Value>measurementTime</Value>
+</Value>
+<Value name="2">
+<Value>heartRate</Value>
+</Value>
+<Value name="3">
+<Value>FirstName</Value>
+</Value>
+<Value name="4">
+<Value>LastName</Value>
+</Value>
+<Value name="5">
+<Value>DateOfBirth</Value>
+</Value>
+<Value name="6">
+<Value>Gender</Value>
+</Value>
+<Value name="7">
+<Value>DeviceId</Value>
+</Value>
+<Value name="8">
+<Value>SSN</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Project name="EnsExportProduction_2025-04-27 15-48-14_356+0" LastModified="2025-04-27 15:48:47.083525254">
+  <ProjectDescription>Studio Project generated from Production 'HCC.Connect.Production' at 2025-04-27 15:48:14.356 UTC</ProjectDescription>
+  <Items>
+    <ProjectItem name="Demolympics.Adapter.CloudStorageOutboundAdapter" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.BO.CloudBucket" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.BP.DeviceCustomBP" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.BS.DeviceStatusService" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.DTL.ObservationtoADTA08" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.MSG.DeviceStatusRequest" type="CLS"></ProjectItem>
+    <ProjectItem name="Demolympics.MSG.ObservationRequest" type="CLS"></ProjectItem>
+    <ProjectItem name="HCC.Connect.Production" type="CLS"></ProjectItem>
+    <ProjectItem name="MQTT Device to Patient.LUT" type="LUT"></ProjectItem>
+    <ProjectItem name="EnsExportNotes.EnsExportProduction_2025-04-27 15-48-14_356+0.PTD" type="PTD"></ProjectItem>
+  </Items>
+</Project>
+
+
+<Class name="HCC.Connect.Production">
+<Super>Ens.Production</Super>
+<TimeChanged>67322,54817.955812768</TimeChanged>
+<TimeCreated>67281,42941.644091371</TimeCreated>
+
+<XData name="ProductionDefinition">
+<Data><![CDATA[
+<Production Name="HCC.Connect.Production" LogGeneralTraceEvents="false">
+  <Description>Health Connect Cloud Base Production</Description>
+  <ActorPoolSize>1</ActorPoolSize>
+  <Item Name="FTS to FHIR Server" Category="HL7" ClassName="Demolympics.BO.CloudBucket" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
+    <Setting Target="Host" Name="BucketName">se-ws-il-ks-fts</Setting>
+    <Setting Target="Adapter" Name="ProviderCredentialsFile">/connect/files/OlympicsStorageBucket.txt</Setting>
+    <Setting Target="Adapter" Name="StorageRegion">us-east-2</Setting>
+    <Setting Target="Host" Name="DirectoryName">hl7-in</Setting>
+  </Item>
+  <Item Name="Medical Device Process" Category="HL7,OMOP,MQTT" ClassName="Demolympics.BP.DeviceCustomBP" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
+    <Setting Target="Host" Name="IncludeFTS">0</Setting>
+  </Item>
+  <Item Name="Medical Device Input" Category="MQTT,HL7,FHIR" ClassName="Demolympics.BS.DeviceStatusService" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
+    <Setting Target="Adapter" Name="BrokerRetryInterval">1</Setting>
+    <Setting Target="Adapter" Name="ClientID"></Setting>
+    <Setting Target="Adapter" Name="Topic">/measurements/yourname/heartrate</Setting>
+    <Setting Target="Adapter" Name="Url">tcp://broker.emqx.io:1883</Setting>
+    <Setting Target="Adapter" Name="Timeout">999</Setting>
+  </Item>
+  <Item Name="EMR" Category="Other" ClassName="EnsLib.HL7.Service.TCPService" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
+    <Setting Target="Adapter" Name="Port">5555</Setting>
+  </Item>
+  <Item Name="To EMR" Category="MQTT" ClassName="EnsLib.HL7.Operation.TCPOperation" PoolSize="1" Enabled="true" Foreground="false" Comment="" LogTraceEvents="false" Schedule="">
+    <Setting Target="Adapter" Name="IPAddress">127.0.0.1</Setting>
+    <Setting Target="Adapter" Name="Port">5555</Setting>
+    <Setting Target="Host" Name="ArchiveIO">1</Setting>
+  </Item>
+</Production>
+]]></Data>
+</XData>
+</Class>
+
+
+<Document name="EnsExportNotes.EnsExportProduction_2025-04-27 15-48-14_356+0.PTD"><ProjectTextDocument name="EnsExportNotes.EnsExportProduction_2025-04-27 15-48-14_356+0" description="Export Notes for export EnsExportProduction_2025-04-27 15-48-14_356+0">
+<![CDATA[<Deployment>
+<Creation>
+<Machine>IP-10-0-0-34.A7TFE0EHWVMG</Machine>
+<Instance>IRIS</Instance>
+<Namespace>DEMOLYMPICS</Namespace>
+<SourceProduction>HCC.Connect.Production</SourceProduction>
+<Username>arig</Username>
+<UTC>2025-04-27 15:48:47.081</UTC>
+</Creation>
+<Notes>
+</Notes>
+<Contents>
+<ExportProject>EnsExportProduction_2025-04-27 15-48-14_356+0</ExportProject>
+<Item num="1">Demolympics.Adapter.CloudStorageOutboundAdapter.CLS</Item>
+<Item num="2">Demolympics.BO.CloudBucket.CLS</Item>
+<Item num="3">Demolympics.BP.DeviceCustomBP.CLS</Item>
+<Item num="4">Demolympics.BS.DeviceStatusService.CLS</Item>
+<Item num="5">Demolympics.DTL.ObservationtoADTA08.CLS</Item>
+<Item num="6">Demolympics.MSG.DeviceStatusRequest.CLS</Item>
+<Item num="7">Demolympics.MSG.ObservationRequest.CLS</Item>
+<Item num="8">HCC.Connect.Production.CLS</Item>
+<Item num="9">MQTT Device to Patient.LUT</Item>
+</Contents>
+<ProductionClassInExport>HCC.Connect.Production</ProductionClassInExport>
+</Deployment>
+
+]]></ProjectTextDocument>
+</Document>
+
+<Document name="MQTT Device to Patient.LUT">
+<lookupTable>
+<entry table="MQTT Device to Patient" key="123456789">John|Doe|M|19750618|987654321</entry>
+</lookupTable>
+</Document></Export>

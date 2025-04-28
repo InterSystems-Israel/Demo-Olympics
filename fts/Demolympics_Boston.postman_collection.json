@@ -1,0 +1,76 @@
+{
+	"info": {
+		"_postman_id": "9e0a01c9-4e8e-4758-85fc-2af2cec6f05a",
+		"name": "Demolympics",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "13878414"
+	},
+	"item": [
+		{
+			"name": "Get Patient",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept": true
+				}
+			},
+			"request": {
+				"auth": {
+					"type": "apikey",
+					"apikey": [
+						{
+							"key": "value",
+							"value": "kmFdVYpjIsEyV2d5Jpm3anKxCClmAOY4D5KsI960",
+							"type": "string"
+						},
+						{
+							"key": "key",
+							"value": "x-api-key",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json+fhir",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://fhir.djvb2ynvwfzi.sandbox-eng-paas.isccloud.io/Observation?patient=115&code=55417-0&_sort=-date&_count=1",
+					"protocol": "https",
+					"host": [
+						"fhir",
+						"djvb2ynvwfzi",
+						"sandbox-eng-paas",
+						"isccloud",
+						"io"
+					],
+					"path": [
+						"Observation"
+					],
+					"query": [
+						{
+							"key": "patient",
+							"value": "115"
+						},
+						{
+							"key": "code",
+							"value": "55417-0"
+						},
+						{
+							"key": "_sort",
+							"value": "-date"
+						},
+						{
+							"key": "_count",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

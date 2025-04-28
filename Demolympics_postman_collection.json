@@ -1,0 +1,62 @@
+{
+	"info": {
+		"_postman_id": "9e0a01c9-4e8e-4758-85fc-2af2cec6f05a",
+		"name": "Demolympics",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "13878414"
+	},
+	"item": [
+		{
+			"name": "Get Patient",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept": true
+				}
+			},
+			"request": {
+				"auth": {
+					"type": "apikey",
+					"apikey": [
+						{
+							"key": "value",
+							"value": "xR0oJ0vELvjleYaWgOsBTr8egx7kMAQN",
+							"type": "string"
+						},
+						{
+							"key": "key",
+							"value": "x-api-key",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Accept",
+						"value": "application/json+fhir",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "https://fhir1key.intersystemsisrael.com/Patient?name=",
+					"protocol": "https",
+					"host": [
+						"fhir1key",
+						"intersystemsisrael",
+						"com"
+					],
+					"path": [
+						"Patient"
+					],
+					"query": [
+						{
+							"key": "name",
+							"value": ""
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
